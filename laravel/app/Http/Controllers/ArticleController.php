@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Article;
 use App\Http\Requests\ArticleRequest;
+use App\Tag;
 use Illuminate\Http\Request;
 
 class ArticleController extends Controller
@@ -16,30 +17,54 @@ class ArticleController extends Controller
     public function index()
     {
         $articles = Article::all()->sortByDesc('created_at');
-        return view('articles.index', compact('articles'));
+        return view('articles.index', ['articles' => $articles]);
     }
 
-    public function create()
+     public function create()
     {
-        return view('articles.create');
+        $allTagNames = Tag::all()->map(function ($tag) {
+            return ['text' => $tag->name];
+        });
+        return view('articles.create', [
+            'allTagNames' => $allTagNames,
+        ]);
     }
 
-     public function store(ArticleRequest $request, Article $article)
+    public function store(ArticleRequest $request, Article $article)
     {
         $article->fill($request->all());
         $article->user_id = $request->user()->id;
         $article->save();
-        return redirect('/');
+        $request->tags->each(function ($tagName) use ($article) {
+            $tag = Tag::firstOrCreate(['name' => $tagName]);
+            $article->tags()->attach($tag);
+        });
+        return redirect(route('article.index'));
     }
 
-    public function edit(Article $article)
+     public function edit(Article $article)
     {
-        return view('articles.edit', compact('article'));
+        $tagNames = $article->tags->map(function ($tag) {
+            return ['text' => $tag->name];
+        });
+        $allTagNames = Tag::all()->map(function ($tag) {
+            return ['text' => $tag->name];
+        });
+        return view('articles.edit', [
+            'article' => $article,
+            'tagNames' => $tagNames,
+            'allTagNames' => $allTagNames,
+        ]);
     }
 
     public function update(ArticleRequest $request, Article $article)
     {
         $article->fill($request->all())->save();
+        $article->tags()->detach();
+        $request->tags->each(function ($tagName) use ($article) {
+            $tag = Tag::firstOrCreate(['name' => $tagName]);
+            $article->tags()->attach($tag);
+        });
         return redirect(route('article.index'));
     }
 
@@ -49,8 +74,29 @@ class ArticleController extends Controller
         return redirect(route('article.index'));
     }
 
-     public function show(Article $article)
+    public function show(Article $article)
     {
-        return view('articles.show', compact('article'));
+        return view('articles.show', ['article' => $article]);
+    }
+
+    public function like(Request $request, Article $article)
+    {
+        $article->likes()->detach($request->user()->id);
+        $article->likes()->attach($request->user()->id);
+
+        return [
+            'id' => $article->id,
+            'countLikes' => $article->count_likes,
+        ];
+    }
+
+    public function unlike(Request $request, Article $article)
+    {
+        $article->likes()->detach($request->user()->id);
+
+        return [
+            'id' => $article->id,
+            'countLikes' => $article->count_likes,
+        ];
     }
 }
